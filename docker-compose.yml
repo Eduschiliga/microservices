@@ -1,0 +1,99 @@
+services:
+
+  eureka-service:
+    container_name: eureka-service
+    build:
+      context: ./eureka
+      dockerfile: Dockerfile
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8761/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    networks:
+      - schiliga-network
+
+  gateway-service:
+    container_name: gateway-service
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    environment:
+      EUREKA_URL: http://eureka-service:8761/eureka
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+    networks:
+      - schiliga-network
+
+  user-service:
+    container_name: user-service
+    build:
+      context: ./user
+      dockerfile: Dockerfile
+    environment:
+      DB_HOST: user-postgres
+      DB_PORT: 5432
+      DB_NAME: userdb
+      DB_USERNAME: root
+      DB_PASSWORD: root
+      JWT_SECRET: 05b0f768-fe7b-49aa-b934-44ef29634de3
+      JWT_EXPIRATION: 7200
+      EUREKA_URL: http://eureka-service:8761/eureka
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health/liveness || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      user-postgres:
+        condition: service_healthy
+      eureka-service:
+        condition: service_healthy
+    networks:
+      - schiliga-network
+
+  user-postgres:
+    image: postgres:17
+    container_name: user-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: userdb
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+    ports:
+      - "5432:5432"
+    volumes:
+      - user_postgres_data:/var/lib/postgresql/data
+      - ./database/init-scripts:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d userdb"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - schiliga-network
+
+
+volumes:
+  user_postgres_data:
+
+networks:
+  schiliga-network:
+    driver: bridge
+    name: schiliga-network

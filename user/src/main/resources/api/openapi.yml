@@ -1,0 +1,458 @@
+openapi: 3.0.3
+info:
+  title: User API
+  description: >
+    API for users, allowing registration, authentication, 
+    and management of users and addresses.
+  version: '1.0.0'
+servers:
+  - url: http://localhost:8080
+    description: Local Server
+tags:
+  - name: Auth
+    description: Authentication operations
+  - name: Users
+    description: Operations related to user management
+  - name: Orders
+    description: Operations related to order management
+
+security:
+  - bearerAuth: [ ]
+paths:
+  /api/v1/auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Perform login
+      security: [ ]
+      description: Authenticates a user and returns a JWT token.
+      operationId: login
+      requestBody:
+        description: Login credentials
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Login'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Token'
+
+  /api/v1/users:
+    get:
+      tags:
+        - Users
+      summary: List all users
+      operationId: listUsers
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: List of users returned successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedUsers'
+    post:
+      tags:
+        - Users
+      summary: Create a new user
+      security: [ ]
+      description: Registers a user (Customer or Restaurant Owner) with their initial address. Public endpoint.
+      operationId: createUser
+      requestBody:
+        description: Data for user registration
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUser'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /api/v1/users/{userId}:
+    parameters:
+      - name: userId
+        in: path
+        description: User ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    put:
+      tags:
+        - Users
+      summary: Update user
+      description: Updates registration data of an existing user.
+      operationId: updateUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUser'
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+    get:
+      tags:
+        - Users
+      summary: Get user by ID
+      operationId: getUserById
+      parameters:
+        - name: userId
+          in: path
+          description: User ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /api/v1/users/search:
+    get:
+      tags:
+        - Users
+      summary: Search users by name
+      operationId: listUsersByName
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/Name'
+
+      responses:
+        '200':
+          description: List of users returned successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedUsers'
+
+  /api/v1/users/{userId}/password:
+    parameters:
+      - name: userId
+        in: path
+        description: User ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    patch:
+      tags:
+        - Users
+      summary: Update password
+      description: Specific endpoint for password change. Requires authentication.
+      operationId: updatePassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePassword'
+      responses:
+        '200':
+          description: Password updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      in: header
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      description: Page number (default is 0)
+      required: false
+      schema:
+        type: integer
+        default: 0
+        format: int32
+        example: 0
+    PerPage:
+      name: perPage
+      in: query
+      description: Number of items per page (default is 10)
+      required: false
+      schema:
+        type: integer
+        default: 10
+        format: int32
+        example: 10
+
+    Name:
+      name: name
+      in: query
+      description: Part of the name for search
+      required: true
+      schema:
+        type: string
+
+  schemas:
+    PaginatedUsers:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 0
+          format: int32
+        perPage:
+          type: integer
+          example: 10
+          format: int32
+        totalPages:
+          type: integer
+          example: 5
+          format: int64
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+
+    # --- Enums ---
+    UserType:
+      type: string
+      enum:
+        - CLIENT
+        - RESTAURANT_OWNER
+      description: User type (Customer or Restaurant Owner)
+
+    Role:
+      type: string
+      enum:
+        - ADMIN
+        - USER
+        - OWNER
+      description: Access role (USER for regular users, ADMIN for administrators)
+
+    CreateUserRole:
+      type: string
+      enum:
+        - USER
+        - OWNER
+      description: Role allowed when creating users through the public API
+
+    # --- Auth Schemas ---
+    Login:
+      type: object
+      properties:
+        login:
+          type: string
+        password:
+          type: string
+      required:
+        - login
+        - password
+
+    Token:
+      type: object
+      properties:
+        token:
+          type: string
+
+    # --- Address Schemas ---
+    CreateAddress:
+      type: object
+      properties:
+        street:
+          type: string
+        number:
+          type: string
+        complement:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        zipCode:
+          type: string
+      required:
+        - street
+        - number
+        - city
+        - state
+        - zipCode
+
+    UpdateAddress:
+      type: object
+      properties:
+        addressId:
+          type: string
+          format: uuid
+        street:
+          type: string
+        number:
+          type: string
+        complement:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        zipCode:
+          type: string
+      required:
+        - addressId
+
+    Address:
+      type: object
+      properties:
+        addressId:
+          type: string
+          format: uuid
+        street:
+          type: string
+        number:
+          type: string
+        complement:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        zipCode:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # --- User Schemas ---
+    CreateUser:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        email:
+          type: string
+          format: email
+          minLength: 1
+          maxLength: 255
+        login:
+          type: string
+          minLength: 1
+          maxLength: 255
+        password:
+          type: string
+          writeOnly: true
+          minLength: 6
+          maxLength: 12
+        address:
+          $ref: '#/components/schemas/CreateAddress'
+        userType:
+          $ref: '#/components/schemas/UserType'
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreateUserRole'
+
+      required:
+        - name
+        - email
+        - login
+        - password
+        - userType
+        - roles
+
+    UpdateUser:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        email:
+          type: string
+          format: email
+          minLength: 1
+          maxLength: 255
+        login:
+          type: string
+          minLength: 1
+          maxLength: 255
+        address:
+          $ref: '#/components/schemas/UpdateAddress'
+        userType:
+          $ref: '#/components/schemas/UserType'
+      required:
+        - name
+        - email
+        - login
+        - active
+        - userType
+
+    UpdatePassword:
+      type: object
+      properties:
+        newPassword:
+          type: string
+          minLength: 6
+          maxLength: 12
+        oldPassword:
+          type: string
+          minLength: 6
+          maxLength: 12
+      required:
+        - newPassword
+        - oldPassword
+
+    User:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+        login:
+          type: string
+        address:
+          $ref: '#/components/schemas/Address'
+        userType:
+          $ref: '#/components/schemas/UserType'
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
