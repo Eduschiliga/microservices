@@ -19,8 +19,8 @@ Cliente (HTTP)
          │ lb://user (via Eureka)
          ▼
 ┌─────────────────┐     ┌─────────────────┐
-│  User Service   │────▶│   PostgreSQL     │
-│  :8080          │     │   :5432          │
+│  User Service   │────▶│   PostgreSQL    │
+│  :8080          │     │   :5432         │
 └─────────────────┘     └─────────────────┘
          │
          ▼
