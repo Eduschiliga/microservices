@@ -1,9 +1,3 @@
-# microservices
-
-> Plataforma de e-commerce baseada em arquitetura de microsserviços com Spring Boot, Spring Cloud Gateway e Eureka Discovery.
-
----
-
 ## 📋 Sobre o Projeto
 
 O **microservices** é uma plataforma back-end construída com arquitetura de microsserviços para gerenciamento de usuários. O projeto aplica boas práticas de engenharia de software como **Arquitetura Hexagonal (Ports & Adapters)**, **Clean Architecture** e **Domain-Driven Design (DDD)**.
