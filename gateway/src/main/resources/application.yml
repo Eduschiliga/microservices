@@ -13,6 +13,11 @@ spring:
 server:
   port: 9090
 
+api:
+  security:
+    token:
+      secret: ${JWT_SECRET:05b0f768-fe7b-49aa-b934-44ef29634de3}
+
 eureka:
   client:
     service-url:

@@ -101,6 +101,9 @@ docker compose ps
 
 Todas as requisições devem ser feitas pela porta do **Gateway** (`9090`).
 
+O Gateway valida localmente a assinatura, o emissor e a expiração do JWT usando a mesma `JWT_SECRET` do `user-service`.
+Os endpoints públicos são login, criação de usuário, preflight `OPTIONS` e health checks.
+
 ### Autenticação
 
 | Método | Endpoint | Auth | Descrição |

@@ -23,6 +23,7 @@ services:
       dockerfile: Dockerfile
     environment:
       EUREKA_URL: http://eureka-service:8761/eureka
+      JWT_SECRET: 05b0f768-fe7b-49aa-b934-44ef29634de3
     ports:
       - "9090:9090"
     healthcheck:
