@@ -39,6 +39,9 @@ Cliente (HTTP)
 | `eureka-service` | Service registry — todos os serviços se registram aqui | `8761` |
 | `gateway-service` | Ponto de entrada único, roteia requisições via load balancer | `9090` |
 | `user-service` | CRUD de usuários, autenticação JWT, controle de acesso | `8080` |
+| `order-service` | Criação e consulta de pedidos, publicação de solicitações de pagamento | `8081` |
+| `payment-service` | Processamento assíncrono de pagamentos via Kafka | `8082` |
+| `kafka` | Broker de eventos para pagamentos de pedidos | `29092` |
 
 ---
 
@@ -51,6 +54,7 @@ Cliente (HTTP)
 - **Spring Security** + **JWT** (Auth0)
 - **Spring Data JPA** + **Hibernate**
 - **PostgreSQL 17**
+- **Apache Kafka**
 - **Resilience4j** (Circuit Breaker + Retry)
 - **MapStruct**
 - **OpenAPI / Swagger** (geração de código via openapi-generator)
@@ -120,6 +124,16 @@ Os endpoints públicos são login, criação de usuário, preflight `OPTIONS` e 
 | `GET` | `/api/v1/users/search?name=` | ✅ Bearer | Busca usuários por nome |
 | `PUT` | `/api/v1/users/{id}` | ✅ Bearer | Atualiza usuário |
 | `PATCH` | `/api/v1/users/{id}/password` | ✅ Bearer | Atualiza senha |
+
+### Pedidos
+
+| Método | Endpoint | Auth | Descrição |
+|---|---|---|---|
+| `POST` | `/api/v1/orders` | ✅ Bearer | Cria pedido e envia solicitação de pagamento para Kafka |
+| `GET` | `/api/v1/orders` | ✅ Bearer | Lista pedidos |
+| `GET` | `/api/v1/orders/{id}` | ✅ Bearer | Busca pedido por ID |
+
+O fluxo de pagamento é assíncrono: o `order-service` publica em `payment-requests`, o `payment-service` processa com retry/circuit breaker/fallback e publica o resultado em `payment-results`.
 
 ---
 
