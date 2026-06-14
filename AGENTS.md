@@ -17,6 +17,7 @@ Core stack:
 - Spring Security with JWT using Auth0 `java-jwt`.
 - Spring MVC, Spring Data JPA, Hibernate, PostgreSQL, MapStruct, OpenAPI Generator.
 - Spring Kafka for asynchronous order payment processing.
+- Transactional outbox for order/payment Kafka publications.
 - Resilience4j for retry, circuit breaker, and fallback behavior around payment processing.
 - Docker Compose for local orchestration.
 
@@ -25,6 +26,7 @@ Read these supporting docs when a task touches the relevant area:
 - `docs/codex/project-context.md` for architecture, service topology, ports, and request flow.
 - `docs/codex/services.md` for service responsibilities, package layout, routes, security, and roles.
 - `docs/codex/development.md` for local setup, Maven/Docker commands, test notes, and final checklist.
+- `docs/maintenance-guide.md` for the complete developer maintenance guide.
 
 ## Repository Rules
 
@@ -56,5 +58,6 @@ Read these supporting docs when a task touches the relevant area:
 - For gateway authentication changes, include or update tests around public endpoints, missing token, invalid token, and valid token.
 - For user use-case changes, prefer focused unit tests in `user/src/test/java/br/com/fiap/user/application/usecases`.
 - For order/payment changes, keep domain and use-case logic in the application layer and Kafka/JPA details in infrastructure adapters.
+- For order/payment Kafka publications, preserve the transactional outbox flow: use cases call messaging ports, outbox adapters persist events, and scheduled infrastructure publishers deliver pending rows to Kafka.
 - For Docker or service-discovery changes, verify `docker compose up --build` when practical.
 - Mention any skipped verification and why.

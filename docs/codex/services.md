@@ -96,12 +96,12 @@ Order owns order creation and order status.
 - Spring role: Spring MVC, JPA, Kafka producer/consumer, Eureka client.
 - Docker container: `order-service`.
 - Database: PostgreSQL container `order-postgres`.
-- Kafka producer topic: `payment-requests`.
+- Kafka producer topic: `payment-requests` through transactional outbox.
 - Kafka consumer topic: `payment-results`.
 
 Primary API groups:
 
-- `POST /api/v1/orders`: creates an order as `PENDING_PAYMENT` and publishes a payment request.
+- `POST /api/v1/orders`: creates an order as `PENDING_PAYMENT` and persists a pending payment request outbox event.
 - `GET /api/v1/orders`: lists orders.
 - `GET /api/v1/orders/{orderId}`: returns one order.
 
@@ -113,8 +113,9 @@ Package conventions mirror clean architecture:
 - `application/usecases/order`: business orchestration.
 - `infrastructure/inbound/rest`: REST controller and DTOs.
 - `infrastructure/inbound/kafka`: payment result consumer.
-- `infrastructure/outbound/kafka`: payment request producer.
-- `infrastructure/outbound/persistence`: JPA entities, repositories, and adapters.
+- `infrastructure/outbound/kafka`: Kafka sender for payment request events.
+- `infrastructure/outbound/persistence`: JPA entities, repositories, adapters, and outbox persistence.
+- `infrastructure/outbound/persistence/outbox`: outbox entity, repository, messaging-port adapter, and scheduled publisher.
 
 ## Payment Service
 
@@ -127,7 +128,7 @@ Payment processes order payment requests asynchronously.
 - Docker container: `payment-service`.
 - Database: PostgreSQL container `payment-postgres`.
 - Kafka consumer topic: `payment-requests`.
-- Kafka producer topic: `payment-results`.
+- Kafka producer topic: `payment-results` through transactional outbox.
 
 Processing behavior:
 
@@ -135,7 +136,8 @@ Processing behavior:
 - Creates or reuses a payment for the order.
 - Calls a simulated payment gateway through an outbound port.
 - Uses Resilience4j `@Retry` and `@CircuitBreaker` around the simulated gateway.
-- Publishes `payment-results` with `approved=true` or `approved=false`.
+- Persists a pending `payment-results` outbox event with `approved=true` or `approved=false`.
+- A scheduled outbox publisher sends pending rows to Kafka and marks successful rows as `PUBLISHED`.
 - Uses Kafka retry topic support and a `.DLT` dead-letter topic fallback for failed message processing.
 
 Package conventions mirror clean architecture:
@@ -146,5 +148,6 @@ Package conventions mirror clean architecture:
 - `application/usecases/payment`: payment orchestration.
 - `infrastructure/inbound/kafka`: payment request consumer and DLT fallback.
 - `infrastructure/outbound/gateway`: simulated payment provider adapter.
-- `infrastructure/outbound/kafka`: payment result producer.
-- `infrastructure/outbound/persistence`: JPA entities, repositories, and adapters.
+- `infrastructure/outbound/kafka`: Kafka sender for payment result events.
+- `infrastructure/outbound/persistence`: JPA entities, repositories, adapters, and outbox persistence.
+- `infrastructure/outbound/persistence/outbox`: outbox entity, repository, messaging-port adapter, and scheduled publisher.

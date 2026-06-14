@@ -85,13 +85,16 @@ Important local URLs:
 - Payment health: `http://localhost:8082/actuator/health`.
 - Kafka host bootstrap server: `localhost:29092`.
 
+Full maintenance documentation for future developers lives in `docs/maintenance-guide.md`.
+
 ## Test Notes
 
 - `gateway` tests may log connection warnings if Eureka is not running. These warnings are acceptable when the Maven build still ends with `BUILD SUCCESS`.
 - Gateway authentication tests should cover public login, public user creation, protected route without token, protected route with invalid token, and protected route with valid token.
 - User use-case tests should stay focused on application behavior and avoid requiring a running database unless the task explicitly needs integration coverage.
-- Order tests should verify order creation publishes payment requests and payment result handling updates status.
-- Payment tests should verify approval, fallback failure, and result publication.
+- Order tests should verify order creation stores a payment request outbox event, the outbox publisher sends it to Kafka, and payment result handling updates status.
+- Payment tests should verify approval, fallback failure, result outbox storage, and outbox publication to Kafka.
+- Outbox integration tests use Testcontainers with real PostgreSQL and Kafka containers; they require Docker to be running and can take longer than pure unit tests.
 - For controller/API changes in `user`, confirm the OpenAPI contract, generated interfaces, mapper behavior, and security annotations remain aligned.
 
 ## Final Checklist for Codex
@@ -102,5 +105,6 @@ Before finishing a code change:
 - Run the narrowest relevant `mvn test` command.
 - For route/security changes, verify public and protected behavior.
 - For API contract changes, update OpenAPI, implementation, and tests together.
+- For Kafka/outbox changes, verify both the database write and the asynchronous publication path.
 - For Docker or environment changes, mention whether `docker compose up --build` was run.
 - Report any warnings that are expected, such as Eureka connection warnings during isolated gateway tests.

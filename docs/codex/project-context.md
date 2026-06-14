@@ -17,9 +17,11 @@ Client
   -> Eureka load-balanced route lb://order
   -> Order Service (:8081)
   -> PostgreSQL (:5433)
+  -> order_outbox table
   -> Kafka topic payment-requests
   -> Payment Service (:8082)
   -> PostgreSQL (:5434)
+  -> payment_outbox table
   -> Kafka topic payment-results
   -> Order Service updates order status
 ```
@@ -51,6 +53,7 @@ The gateway uses Eureka discovery to route to the `user` service instead of hard
 - `JWT_SECRET` must match between `gateway-service` and `user-service`.
 - `JWT_EXPIRATION` is owned by `user-service`, because the user service generates tokens.
 - Kafka topics used by the order/payment flow are `payment-requests` and `payment-results`.
+- Kafka publications from `order` and `payment` use transactional outbox tables so database state and pending events are committed together before asynchronous delivery.
 
 ## Request Flow
 
@@ -61,9 +64,11 @@ The gateway uses Eureka discovery to route to the `user` service instead of hard
 5. The user service validates authentication again and applies method-level authorization where required.
 6. User data is persisted in PostgreSQL through Spring Data JPA repositories.
 7. Gateway routes matching `/api/v1/orders/**` to `lb://order`.
-8. The order service saves the order as `PENDING_PAYMENT` and publishes a `payment-requests` Kafka event.
-9. The payment service consumes payment requests, applies retry/circuit-breaker/fallback behavior, and publishes a `payment-results` event.
-10. The order service consumes payment results and updates orders to `PAID` or `PAYMENT_FAILED`.
+8. The order service saves the order as `PENDING_PAYMENT` and stores a pending `PaymentRequested` event in `order_outbox` in the same transaction.
+9. The order outbox publisher sends pending outbox rows to the `payment-requests` Kafka topic and marks successful rows as `PUBLISHED`.
+10. The payment service consumes payment requests, applies retry/circuit-breaker/fallback behavior, stores a pending `PaymentResult` event in `payment_outbox`, and commits payment state with the event.
+11. The payment outbox publisher sends pending outbox rows to the `payment-results` Kafka topic and marks successful rows as `PUBLISHED`.
+12. The order service consumes payment results and updates orders to `PAID` or `PAYMENT_FAILED`.
 
 ## Important Configuration Files
 

@@ -17,8 +17,8 @@ import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaAdmin;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
-import org.springframework.kafka.support.serializer.JsonDeserializer;
-import org.springframework.kafka.support.serializer.JsonSerializer;
+import org.springframework.kafka.support.serializer.JacksonJsonDeserializer;
+import org.springframework.kafka.support.serializer.JacksonJsonSerializer;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -27,9 +27,14 @@ import java.util.Map;
 @Configuration
 public class KafkaConfig {
     private final String bootstrapServers;
+    private final boolean listenerAutoStartup;
 
-    public KafkaConfig(@Value("${spring.kafka.bootstrap-servers}") String bootstrapServers) {
+    public KafkaConfig(
+            @Value("${spring.kafka.bootstrap-servers}") String bootstrapServers,
+            @Value("${spring.kafka.listener.auto-startup:true}") boolean listenerAutoStartup
+    ) {
         this.bootstrapServers = bootstrapServers;
+        this.listenerAutoStartup = listenerAutoStartup;
     }
 
     @Bean
@@ -42,8 +47,8 @@ public class KafkaConfig {
         Map<String, Object> props = new HashMap<>();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
-        props.put(JsonSerializer.ADD_TYPE_INFO_HEADERS, false);
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JacksonJsonSerializer.class);
+        props.put(JacksonJsonSerializer.ADD_TYPE_INFO_HEADERS, false);
         return new DefaultKafkaProducerFactory<>(props);
     }
 
@@ -54,7 +59,7 @@ public class KafkaConfig {
 
     @Bean
     public ConsumerFactory<String, PaymentRequestedEvent> consumerFactory() {
-        JsonDeserializer<PaymentRequestedEvent> valueDeserializer = new JsonDeserializer<>(PaymentRequestedEvent.class);
+        JacksonJsonDeserializer<PaymentRequestedEvent> valueDeserializer = new JacksonJsonDeserializer<>(PaymentRequestedEvent.class);
         valueDeserializer.addTrustedPackages("*");
         valueDeserializer.setUseTypeHeaders(false);
 
@@ -70,6 +75,7 @@ public class KafkaConfig {
     public ConcurrentKafkaListenerContainerFactory<String, PaymentRequestedEvent> kafkaListenerContainerFactory() {
         ConcurrentKafkaListenerContainerFactory<String, PaymentRequestedEvent> factory = new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory());
+        factory.setAutoStartup(listenerAutoStartup);
         return factory;
     }
 }
