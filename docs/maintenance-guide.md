@@ -35,8 +35,10 @@ flowchart LR
 - Spring Cloud Gateway WebFlux.
 - Spring Security com JWT via Auth0 `java-jwt`.
 - Spring MVC, Spring Data JPA, Hibernate e PostgreSQL.
+- Flyway para migrations de banco.
 - Kafka via Spring Kafka.
 - Resilience4j para retry e circuit breaker.
+- Spring Boot Actuator, Micrometer Prometheus, Prometheus e Grafana para observabilidade.
 - Testcontainers para integracao com Kafka e PostgreSQL nos testes.
 - Docker Compose para orquestracao local.
 
@@ -52,6 +54,8 @@ Cada modulo Maven possui `.mvn/jvm.config` com `--sun-misc-unsafe-memory-access=
 | Order | `order-service` | `8081` | `8081` | Pedidos e status de pagamento |
 | Payment | `payment-service` | `8082` | `8082` | Processamento de pagamento |
 | Kafka | `kafka` | `29092` | `9092` | Broker interno |
+| Prometheus | `prometheus` | `9091` | `9090` | Coleta metricas Actuator |
+| Grafana | `grafana` | `3000` | `3000` | Visualizacao de metricas |
 | User DB | `user-postgres` | `5432` | `5432` | Banco do user |
 | Order DB | `order-postgres` | `5433` | `5432` | Banco do order |
 | Payment DB | `payment-postgres` | `5434` | `5432` | Banco do payment |
@@ -63,6 +67,8 @@ URLs uteis:
 - User health: `http://localhost:8080/actuator/health`.
 - Order health: `http://localhost:8081/actuator/health`.
 - Payment health: `http://localhost:8082/actuator/health`.
+- Prometheus: `http://localhost:9091`.
+- Grafana: `http://localhost:3000` com usuario `admin` e senha `admin`.
 
 ## Como Rodar
 
@@ -116,7 +122,7 @@ Rotas publicas pela gateway:
 - `POST /api/v1/auth/login`
 - `POST /api/v1/users`
 - `OPTIONS /**`
-- `/actuator/health/**`
+- `/actuator/**`
 
 Rotas protegidas:
 
@@ -297,17 +303,99 @@ Tabelas:
 
 Campos importantes:
 
-- `event_id`: identificador do evento.
+- `id`: identificador do evento.
 - `aggregate_id`: id do pedido/pagamento relacionado.
 - `event_type`: tipo logico do evento.
 - `topic`: topico Kafka destino.
 - `payload`: JSON serializado.
-- `status`: `PENDING`, `PUBLISHED` ou `FAILED`.
+- `status`: `PENDING` ou `PUBLISHED`.
 - `attempts`: tentativas de publicacao.
+- `next_attempt_at`: proxima tentativa permitida.
 - `last_error`: ultima falha.
 - `created_at`, `updated_at`, `published_at`.
 
 Se um evento ficar preso em `PENDING`, verifique Kafka, logs do publisher e `last_error`.
+
+## Observabilidade
+
+Cada servico expoe Actuator com health, info, metrics e Prometheus. `user` e `payment` tambem expoem metricas de circuit breakers e retries do Resilience4j.
+
+Endpoints locais:
+
+- Eureka: `http://localhost:8761/actuator/prometheus`
+- Gateway: `http://localhost:9090/actuator/prometheus`
+- User: `http://localhost:8080/actuator/prometheus`
+- Order: `http://localhost:8081/actuator/prometheus`
+- Payment: `http://localhost:8082/actuator/prometheus`
+
+Prometheus:
+
+- Configuracao: `observability/prometheus/prometheus.yml`.
+- URL local: `http://localhost:9091`.
+- Scrape jobs: `eureka`, `gateway`, `user`, `order` e `payment`.
+
+Grafana:
+
+- Provisionamento: `observability/grafana/provisioning`.
+- URL local: `http://localhost:3000`.
+- Usuario/senha local: `admin` / `admin`.
+- Imagem Docker local fixada em `grafana/grafana:11.6.1` para manter o provisionamento de datasource e dashboards reprodutivel.
+- Datasource `Prometheus` aponta para `http://prometheus:9090` dentro da rede Docker.
+- Dashboards versionados ficam em `observability/grafana/dashboards`.
+- Provider de dashboards: `observability/grafana/provisioning/dashboards/dashboards.yml`.
+- Dashboards provisionados:
+  - `Microservices - Business Overview`.
+  - `Microservices - Technical Overview`.
+
+Metricas customizadas:
+
+| Metrica Prometheus | Origem | Significado |
+|---|---|---|
+| `business_orders_created_events_total` | `order` | Pedidos criados, com tag `status`. |
+| `business_orders_current` | `order` | Quantidade atual de pedidos por `status`. |
+| `business_orders_payment_status_updated_total` | `order` | Atualizacoes de status de pagamento do pedido. |
+| `business_orders_amount_sum` | `order` | Soma do valor dos pedidos criados. |
+| `business_payments_processed_total` | `payment` | Pagamentos processados por `status`. |
+| `business_payments_current` | `payment` | Quantidade atual de pagamentos por `status`. |
+| `business_payments_amount_sum` | `payment` | Soma do valor dos pagamentos processados. |
+| `business_payments_fallback_total` | `payment` | Pagamentos concluidos pelo fallback. |
+| `business_outbox_events_current` | `order`, `payment` | Eventos de outbox por `service` e `status`. |
+| `business_outbox_publish_attempts_total` | `order`, `payment` | Tentativas de publicacao de eventos da outbox. |
+| `business_outbox_publish_results_total` | `order`, `payment` | Resultado da publicacao com tags `service`, `topic`, `result` e `error_type`. |
+
+Queries uteis:
+
+```promql
+sum by (status) (rate(business_orders_created_events_total[5m]))
+business_orders_current
+sum by (status) (rate(business_payments_processed_total[5m]))
+sum by (service, status) (business_outbox_events_current)
+sum by (service, result, error_type) (rate(business_outbox_publish_results_total[5m]))
+```
+
+Correlation ID:
+
+- Header padrao: `X-Correlation-Id`.
+- A gateway gera um UUID quando o cliente nao envia o header.
+- Quando o cliente envia o header, a gateway reaproveita o valor.
+- A gateway propaga o header para os servicos internos.
+- `gateway`, `user`, `order` e `payment` devolvem o header na resposta.
+- Os filtros colocam o valor no MDC como `correlationId`, e o padrao de log inclui `[service,correlationId]`.
+
+Arquivos principais:
+
+- `gateway/src/main/java/br/com/schiliga/gateway/observability/CorrelationIdWebFilter.java`
+- `user/src/main/java/br/com/fiap/user/infrastructure/observability/CorrelationIdFilter.java`
+- `order/src/main/java/br/com/fiap/order/infrastructure/observability/CorrelationIdFilter.java`
+- `payment/src/main/java/br/com/fiap/payment/infrastructure/observability/CorrelationIdFilter.java`
+
+Teste rapido:
+
+```powershell
+$response = Invoke-WebRequest -Uri "http://localhost:9090/actuator/health" -Headers @{ "X-Correlation-Id" = "maint-123" }
+$response.Headers["X-Correlation-Id"]
+Invoke-WebRequest -Uri "http://localhost:9091/-/ready"
+```
 
 ## Banco de Dados
 
@@ -316,6 +404,24 @@ Cada servico dono de dados tem seu banco:
 - `userdb`: usuarios, enderecos e seguranca.
 - `orderdb`: pedidos, itens e `order_outbox`.
 - `paymentdb`: pagamentos e `payment_outbox`.
+
+## Migrations
+
+Os servicos `user`, `order` e `payment` usam Flyway como fonte de evolucao de schema. Hibernate deve ficar com `ddl-auto: validate`, ou seja, a aplicacao valida o schema existente, mas nao cria nem altera tabelas em runtime.
+
+Pastas de migrations:
+
+- `user/src/main/resources/db/migration`
+- `order/src/main/resources/db/migration`
+- `payment/src/main/resources/db/migration`
+
+Convencao:
+
+- Use arquivos versionados como `V2__add_order_column.sql`.
+- Nao edite migrations ja aplicadas em ambientes compartilhados.
+- Mudancas de entidade JPA que alteram tabela, coluna, indice ou constraint devem vir com migration.
+- `spring.flyway.baseline-on-migrate=true` existe para ambientes locais que ja tinham tabelas criadas pelo Hibernate antes da entrada do Flyway.
+- Para validar do zero, rode `docker compose down -v` antes de `docker compose up --build`.
 
 Comandos uteis:
 
@@ -349,6 +455,7 @@ Testes de integracao com Testcontainers:
 - `payment`: valida persistencia de outbox e publicacao em Kafka real.
 
 Os testes de integracao iniciam manualmente containers `postgres:17` e `apache/kafka-native:3.8.0`, fecham producer e pool JDBC antes de parar os containers, e evitam mensagens de shutdown tardio do Kafka/Testcontainers.
+Nesses testes, Flyway fica desabilitado e Hibernate usa `create-drop` para criar schemas isolados de teste.
 
 ## Smoke Test Manual
 
@@ -425,6 +532,24 @@ Pagamento processado mas pedido nao muda:
 - Verifique topico `payment-results`.
 - Verifique logs do consumer no `order-service`.
 
+Prometheus sem targets:
+
+- Confirme que `docker compose ps` mostra os cinco servicos de aplicacao saudaveis.
+- Confirme que `observability/prometheus/prometheus.yml` esta montado no container.
+- Acesse `http://localhost:9091/targets` e confira qual job falhou.
+
+Dashboards nao aparecem no Grafana:
+
+- Confirme que o container `grafana` foi recriado depois da alteracao.
+- Confirme que `observability/grafana/dashboards` esta montado em `/var/lib/grafana/dashboards`.
+- Verifique logs com `docker logs grafana`.
+- No Grafana, veja `Dashboards > Microservices`.
+
+Correlation ID ausente:
+
+- Confirme que a requisicao passou pela gateway.
+- Para chamadas diretas a servicos, envie `X-Correlation-Id` manualmente ou verifique se o filtro do servico gerou um UUID.
+
 Avisos de build/teste:
 
 - `JsonSerializer/JsonDeserializer` antigos nao devem aparecer; o projeto usa `JacksonJsonSerializer` e `JacksonJsonDeserializer`.
@@ -439,6 +564,7 @@ Antes de finalizar alteracoes:
 - Identifique o dono da regra: gateway, user, order ou payment.
 - Mantenha dominio e casos de uso longe de detalhes de framework.
 - Se alterar contrato do `user`, atualize `openapi.yml`, controller, mapper e testes.
+- Se alterar schema, crie uma nova migration Flyway e mantenha Hibernate em `validate`.
 - Se alterar evento Kafka, atualize produtor, consumidor, payload, docs e testes.
 - Se alterar publicacao de evento, preserve outbox ou justifique a mudanca.
 - Se alterar seguranca, teste rota publica, sem token, token invalido e token valido.
@@ -448,12 +574,23 @@ Antes de finalizar alteracoes:
 
 ## Evidencia da Ultima Validacao
 
-Nesta rodada de manutencao foram validados:
+Ultima validacao executada em 2026-06-15:
 
-- `mvn test` em `order`: 3 testes, sucesso.
-- `mvn test` em `payment`: 3 testes, sucesso.
-- `mvn test` em `gateway`: 6 testes, sucesso.
-- `mvn test` em `user`: 28 testes, sucesso.
 - `mvn test` em `eureka`: 1 teste, sucesso.
-- `docker compose up -d --build`: imagens reconstruidas e servicos saudaveis.
-- Smoke test via gateway: login com `admin/Admin@123`, rota protegida sem token retornando `401`, criacao de pedido e status final `PAID`.
+- `mvn test` em `gateway`: 8 testes, sucesso, incluindo `CorrelationIdWebFilterTest`.
+- `mvn test` em `user`: 28 testes, sucesso.
+- `mvn test` em `order`: 3 testes, sucesso, incluindo outbox com Testcontainers PostgreSQL/Kafka.
+- `mvn test` em `payment`: 3 testes, sucesso, incluindo outbox com Testcontainers PostgreSQL/Kafka.
+- `docker compose build --progress=plain eureka-service gateway-service user-service order-service payment-service`: imagens reconstruidas com sucesso.
+- `docker compose up -d`: eureka, gateway, user, order e payment saudaveis; Prometheus e Grafana em execucao.
+- Gateway health via `http://localhost:9090/actuator/health`: HTTP 200 e header `X-Correlation-Id: codex-observability-123`.
+- Gateway metrics via `http://localhost:9090/actuator/prometheus`: HTTP 200.
+- Prometheus readiness via `http://localhost:9091/-/ready`: HTTP 200.
+- Prometheus targets via `/api/v1/targets`: `eureka`, `gateway`, `user`, `order` e `payment` em estado `up`.
+- Grafana health via `http://localhost:3000/api/health`: HTTP 200.
+- Grafana datasource via `/api/datasources/uid/prometheus`: datasource `Prometheus` encontrado.
+- Grafana dashboards via `/api/search?query=Microservices`: pasta `Microservices` e dashboards `Microservices - Business Overview` e `Microservices - Technical Overview` encontrados.
+- Smoke de pedido via gateway: login `admin`, `POST /api/v1/orders`, pedido `6d25f965-2724-4a12-9e1e-11e90815adff` atualizado de `PENDING_PAYMENT` para `PAID`.
+- Metricas de negocio no `order`: `business_orders_created_events_total`, `business_orders_current`, `business_orders_payment_status_updated_total`, `business_orders_amount_sum` e metricas de outbox expostas em `/actuator/prometheus`.
+- Metricas de negocio no `payment`: `business_payments_processed_total`, `business_payments_current`, `business_payments_amount_sum` e metricas de outbox expostas em `/actuator/prometheus`.
+- Prometheus queries para `business_orders_created_events_total` e `business_payments_processed_total`: vetores retornados com sucesso.

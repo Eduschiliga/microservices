@@ -8,6 +8,7 @@ import br.com.fiap.payment.application.ports.inbound.payment.ProcessPaymentInput
 import br.com.fiap.payment.application.ports.outbound.gateway.PaymentGatewayPort;
 import br.com.fiap.payment.application.ports.outbound.messaging.PaymentResultMessage;
 import br.com.fiap.payment.application.ports.outbound.messaging.PaymentResultPublisherPort;
+import br.com.fiap.payment.application.ports.outbound.metrics.PaymentMetricsPort;
 import br.com.fiap.payment.application.ports.outbound.repository.PaymentRepositoryPort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,15 +18,18 @@ public class PaymentUseCase implements ForProcessingPayment {
     private final PaymentRepositoryPort paymentRepositoryPort;
     private final PaymentGatewayPort paymentGatewayPort;
     private final PaymentResultPublisherPort paymentResultPublisherPort;
+    private final PaymentMetricsPort paymentMetricsPort;
 
     public PaymentUseCase(
             PaymentRepositoryPort paymentRepositoryPort,
             PaymentGatewayPort paymentGatewayPort,
-            PaymentResultPublisherPort paymentResultPublisherPort
+            PaymentResultPublisherPort paymentResultPublisherPort,
+            PaymentMetricsPort paymentMetricsPort
     ) {
         this.paymentRepositoryPort = paymentRepositoryPort;
         this.paymentGatewayPort = paymentGatewayPort;
         this.paymentResultPublisherPort = paymentResultPublisherPort;
+        this.paymentMetricsPort = paymentMetricsPort;
     }
 
     @Override
@@ -43,6 +47,7 @@ public class PaymentUseCase implements ForProcessingPayment {
 
         Payment savedPayment = paymentRepositoryPort.save(payment);
         publishResult(savedPayment);
+        paymentMetricsPort.recordPaymentProcessed(savedPayment.getStatus(), savedPayment.getAmount());
         return PaymentOutput.from(savedPayment);
     }
 
@@ -55,6 +60,8 @@ public class PaymentUseCase implements ForProcessingPayment {
 
         Payment savedPayment = paymentRepositoryPort.save(payment);
         publishResult(savedPayment);
+        paymentMetricsPort.recordPaymentProcessed(savedPayment.getStatus(), savedPayment.getAmount());
+        paymentMetricsPort.recordPaymentFallback(savedPayment.getStatus());
         return PaymentOutput.from(savedPayment);
     }
 

@@ -7,6 +7,7 @@ import br.com.fiap.payment.application.ports.inbound.payment.PaymentOutput;
 import br.com.fiap.payment.application.ports.inbound.payment.ProcessPaymentInput;
 import br.com.fiap.payment.application.ports.outbound.messaging.PaymentResultMessage;
 import br.com.fiap.payment.application.ports.outbound.messaging.PaymentResultPublisherPort;
+import br.com.fiap.payment.application.ports.outbound.metrics.PaymentMetricsPort;
 import br.com.fiap.payment.application.ports.outbound.repository.PaymentRepositoryPort;
 import org.junit.jupiter.api.Test;
 
@@ -24,10 +25,12 @@ class PaymentUseCaseTest {
     void shouldApprovePaymentAndPublishResult() {
         InMemoryPaymentRepository repository = new InMemoryPaymentRepository();
         RecordingPaymentResultPublisher publisher = new RecordingPaymentResultPublisher();
+        RecordingPaymentMetrics metrics = new RecordingPaymentMetrics();
         PaymentUseCase useCase = new PaymentUseCase(
                 repository,
                 payment -> new PaymentAuthorization(true, "approved"),
-                publisher
+                publisher,
+                metrics
         );
 
         PaymentOutput output = useCase.process(new ProcessPaymentInput(UUID.randomUUID(), UUID.randomUUID(), BigDecimal.TEN));
@@ -35,16 +38,20 @@ class PaymentUseCaseTest {
         assertThat(output.status()).isEqualTo(PaymentStatus.APPROVED);
         assertThat(publisher.messages).hasSize(1);
         assertThat(publisher.messages.getFirst().approved()).isTrue();
+        assertThat(metrics.processedStatuses).containsExactly(PaymentStatus.APPROVED);
+        assertThat(metrics.processedAmounts).containsExactly(BigDecimal.TEN);
     }
 
     @Test
     void shouldFallbackPaymentAndPublishFailedResult() {
         InMemoryPaymentRepository repository = new InMemoryPaymentRepository();
         RecordingPaymentResultPublisher publisher = new RecordingPaymentResultPublisher();
+        RecordingPaymentMetrics metrics = new RecordingPaymentMetrics();
         PaymentUseCase useCase = new PaymentUseCase(
                 repository,
                 payment -> new PaymentAuthorization(true, "approved"),
-                publisher
+                publisher,
+                metrics
         );
 
         PaymentOutput output = useCase.fallback(new ProcessPaymentInput(UUID.randomUUID(), UUID.randomUUID(), BigDecimal.TEN), "dlt");
@@ -52,6 +59,9 @@ class PaymentUseCaseTest {
         assertThat(output.status()).isEqualTo(PaymentStatus.FAILED);
         assertThat(publisher.messages).hasSize(1);
         assertThat(publisher.messages.getFirst().approved()).isFalse();
+        assertThat(metrics.processedStatuses).containsExactly(PaymentStatus.FAILED);
+        assertThat(metrics.processedAmounts).containsExactly(BigDecimal.TEN);
+        assertThat(metrics.fallbackStatuses).containsExactly(PaymentStatus.FAILED);
     }
 
     private static class InMemoryPaymentRepository implements PaymentRepositoryPort {
@@ -76,6 +86,23 @@ class PaymentUseCaseTest {
         @Override
         public void publish(PaymentResultMessage message) {
             messages.add(message);
+        }
+    }
+
+    private static class RecordingPaymentMetrics implements PaymentMetricsPort {
+        private final List<PaymentStatus> processedStatuses = new ArrayList<>();
+        private final List<BigDecimal> processedAmounts = new ArrayList<>();
+        private final List<PaymentStatus> fallbackStatuses = new ArrayList<>();
+
+        @Override
+        public void recordPaymentProcessed(PaymentStatus status, BigDecimal amount) {
+            processedStatuses.add(status);
+            processedAmounts.add(amount);
+        }
+
+        @Override
+        public void recordPaymentFallback(PaymentStatus status) {
+            fallbackStatuses.add(status);
         }
     }
 }

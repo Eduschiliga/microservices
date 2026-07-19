@@ -16,9 +16,11 @@ Core stack:
 - Spring Cloud Gateway WebFlux.
 - Spring Security with JWT using Auth0 `java-jwt`.
 - Spring MVC, Spring Data JPA, Hibernate, PostgreSQL, MapStruct, OpenAPI Generator.
+- Flyway for database migrations in services that own PostgreSQL schemas.
 - Spring Kafka for asynchronous order payment processing.
 - Transactional outbox for order/payment Kafka publications.
 - Resilience4j for retry, circuit breaker, and fallback behavior around payment processing.
+- Spring Boot Actuator, Micrometer Prometheus, Prometheus, and Grafana for observability.
 - Docker Compose for local orchestration.
 
 Read these supporting docs when a task touches the relevant area:
@@ -39,6 +41,8 @@ Read these supporting docs when a task touches the relevant area:
 - The `user` service is OpenAPI-first. Do not change API behavior or DTO shape without updating `user/src/main/resources/api/openapi.yml`, generated-contract usage, implementation, and tests together.
 - The `gateway` validates JWT locally using the same `JWT_SECRET` as `user`, while `user` keeps its own Spring Security validation and method-level authorization.
 - Do not remove service-level security from `user` just because the gateway performs authentication.
+- Schema changes in `user`, `order`, or `payment` must be implemented with Flyway migrations under `src/main/resources/db/migration`; keep Hibernate `ddl-auto` as `validate`.
+- Preserve observability when touching HTTP or Docker configuration: `/actuator/prometheus`, Prometheus scrape jobs, Grafana datasource/dashboard provisioning, business metrics, and `X-Correlation-Id` propagation/logging.
 - Prefer existing Spring, Maven, and package patterns over adding new abstractions.
 
 ## Common Commands
@@ -59,5 +63,6 @@ Read these supporting docs when a task touches the relevant area:
 - For user use-case changes, prefer focused unit tests in `user/src/test/java/br/com/fiap/user/application/usecases`.
 - For order/payment changes, keep domain and use-case logic in the application layer and Kafka/JPA details in infrastructure adapters.
 - For order/payment Kafka publications, preserve the transactional outbox flow: use cases call messaging ports, outbox adapters persist events, and scheduled infrastructure publishers deliver pending rows to Kafka.
+- For persistence/schema changes, include or update Flyway migrations and verify that Hibernate validation still passes.
 - For Docker or service-discovery changes, verify `docker compose up --build` when practical.
 - Mention any skipped verification and why.

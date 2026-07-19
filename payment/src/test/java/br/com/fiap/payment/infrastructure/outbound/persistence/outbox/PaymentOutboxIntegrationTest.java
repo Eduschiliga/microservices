@@ -39,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(properties = {
         "eureka.client.enabled=false",
         "spring.jpa.hibernate.ddl-auto=create-drop",
+        "spring.flyway.enabled=false",
         "app.kafka.topics.payment-requests=payment-requests-test",
         "app.kafka.topics.payment-results=payment-results-test",
         "app.outbox.initial-delay-ms=600000",

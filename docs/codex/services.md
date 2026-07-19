@@ -32,15 +32,22 @@ Security behavior:
   - `POST /api/v1/auth/login`.
   - `POST /api/v1/users`.
   - `OPTIONS /**`.
-  - `/actuator/health/**`.
+  - `/actuator/**`.
 - Protected endpoints require `Authorization: Bearer <jwt>`.
 - `/api/v1/orders/**` is protected by the gateway.
 - The gateway validates JWT locally using Auth0 `java-jwt`.
 - The expected issuer is `restaurant-api`.
 - The gateway must use the same `JWT_SECRET` as the user service.
 - Gateway authentication is an edge check only; the user service still performs its own authentication and authorization.
+- Gateway creates or reuses `X-Correlation-Id`, writes it to logs, returns it in responses, and forwards it downstream.
 
 When changing gateway authentication, update tests for public endpoints, missing token, invalid token, and valid token.
+
+Observability:
+
+- Actuator endpoints include health, info, metrics, and prometheus.
+- Prometheus endpoint: `http://localhost:9090/actuator/prometheus`.
+- Correlation filter: `gateway/src/main/java/br/com/schiliga/gateway/observability/CorrelationIdWebFilter.java`.
 
 ## User Service
 
@@ -52,6 +59,7 @@ User is the business service for registration, authentication, and user manageme
 - Spring role: Spring MVC, Spring Security, JPA, OpenAPI-generated interfaces, Eureka client.
 - Docker container: `user-service`.
 - Database: PostgreSQL container `user-postgres`.
+- Migrations: `user/src/main/resources/db/migration`.
 
 Primary API groups:
 
@@ -80,11 +88,18 @@ Security behavior:
 - `AuthenticateUserUseCase` handles login, token validation, and user lookup by token.
 - `JwtTokenAdapter` signs and verifies JWT with issuer `restaurant-api`.
 - Method authorization uses `@PreAuthorize` in `UserController`.
+- Actuator health, info, metrics, and prometheus endpoints are public for local observability.
 
 OpenAPI behavior:
 
 - `user/src/main/resources/api/openapi.yml` is the source of truth for generated API interfaces and DTOs.
 - If endpoint paths, request/response shapes, or operation names change, update the OpenAPI contract and the affected controllers/tests together.
+
+Observability:
+
+- Prometheus endpoint: `http://localhost:8080/actuator/prometheus`.
+- Correlation filter: `user/src/main/java/br/com/fiap/user/infrastructure/observability/CorrelationIdFilter.java`.
+- Logs include `correlationId` from `X-Correlation-Id`.
 
 ## Order Service
 
@@ -96,6 +111,7 @@ Order owns order creation and order status.
 - Spring role: Spring MVC, JPA, Kafka producer/consumer, Eureka client.
 - Docker container: `order-service`.
 - Database: PostgreSQL container `order-postgres`.
+- Migrations: `order/src/main/resources/db/migration`.
 - Kafka producer topic: `payment-requests` through transactional outbox.
 - Kafka consumer topic: `payment-results`.
 
@@ -117,6 +133,16 @@ Package conventions mirror clean architecture:
 - `infrastructure/outbound/persistence`: JPA entities, repositories, adapters, and outbox persistence.
 - `infrastructure/outbound/persistence/outbox`: outbox entity, repository, messaging-port adapter, and scheduled publisher.
 
+Observability:
+
+- Prometheus endpoint: `http://localhost:8081/actuator/prometheus`.
+- Correlation filter: `order/src/main/java/br/com/fiap/order/infrastructure/observability/CorrelationIdFilter.java`.
+- Logs include `correlationId` from `X-Correlation-Id`.
+- Business metrics port: `order/src/main/java/br/com/fiap/order/application/ports/outbound/metrics/OrderMetricsPort.java`.
+- Business metrics adapter: `order/src/main/java/br/com/fiap/order/infrastructure/observability/OrderBusinessMetrics.java`.
+- Business gauges: `business_orders_current` and `business_outbox_events_current`.
+- Business counters/summaries: `business_orders_created_events_total`, `business_orders_payment_status_updated_total`, `business_orders_amount_sum`, and outbox publication metrics.
+
 ## Payment Service
 
 Payment processes order payment requests asynchronously.
@@ -127,6 +153,7 @@ Payment processes order payment requests asynchronously.
 - Spring role: Spring MVC runtime, JPA, Kafka producer/consumer, Eureka client, Resilience4j.
 - Docker container: `payment-service`.
 - Database: PostgreSQL container `payment-postgres`.
+- Migrations: `payment/src/main/resources/db/migration`.
 - Kafka consumer topic: `payment-requests`.
 - Kafka producer topic: `payment-results` through transactional outbox.
 
@@ -151,3 +178,14 @@ Package conventions mirror clean architecture:
 - `infrastructure/outbound/kafka`: Kafka sender for payment result events.
 - `infrastructure/outbound/persistence`: JPA entities, repositories, adapters, and outbox persistence.
 - `infrastructure/outbound/persistence/outbox`: outbox entity, repository, messaging-port adapter, and scheduled publisher.
+
+Observability:
+
+- Prometheus endpoint: `http://localhost:8082/actuator/prometheus`.
+- Resilience4j retry and circuit breaker metrics are exposed through Actuator/Prometheus.
+- Correlation filter: `payment/src/main/java/br/com/fiap/payment/infrastructure/observability/CorrelationIdFilter.java`.
+- Logs include `correlationId` from `X-Correlation-Id`.
+- Business metrics port: `payment/src/main/java/br/com/fiap/payment/application/ports/outbound/metrics/PaymentMetricsPort.java`.
+- Business metrics adapter: `payment/src/main/java/br/com/fiap/payment/infrastructure/observability/PaymentBusinessMetrics.java`.
+- Business gauges: `business_payments_current` and `business_outbox_events_current`.
+- Business counters/summaries: `business_payments_processed_total`, `business_payments_fallback_total`, `business_payments_amount_sum`, and outbox publication metrics.

@@ -9,6 +9,7 @@ import br.com.fiap.order.application.ports.inbound.order.ForUpdatingOrderPayment
 import br.com.fiap.order.application.ports.inbound.order.OrderOutput;
 import br.com.fiap.order.application.ports.outbound.messaging.PaymentRequestMessage;
 import br.com.fiap.order.application.ports.outbound.messaging.PaymentRequestPublisherPort;
+import br.com.fiap.order.application.ports.outbound.metrics.OrderMetricsPort;
 import br.com.fiap.order.application.ports.outbound.repository.OrderRepositoryPort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,10 +21,16 @@ import java.util.UUID;
 public class OrderUseCase implements ForCreatingOrder, ForGettingOrder, ForUpdatingOrderPayment {
     private final OrderRepositoryPort orderRepositoryPort;
     private final PaymentRequestPublisherPort paymentRequestPublisherPort;
+    private final OrderMetricsPort orderMetricsPort;
 
-    public OrderUseCase(OrderRepositoryPort orderRepositoryPort, PaymentRequestPublisherPort paymentRequestPublisherPort) {
+    public OrderUseCase(
+            OrderRepositoryPort orderRepositoryPort,
+            PaymentRequestPublisherPort paymentRequestPublisherPort,
+            OrderMetricsPort orderMetricsPort
+    ) {
         this.orderRepositoryPort = orderRepositoryPort;
         this.paymentRequestPublisherPort = paymentRequestPublisherPort;
+        this.orderMetricsPort = orderMetricsPort;
     }
 
     @Override
@@ -39,6 +46,7 @@ public class OrderUseCase implements ForCreatingOrder, ForGettingOrder, ForUpdat
                 order.getCustomerId(),
                 order.getTotalAmount()
         ));
+        orderMetricsPort.recordOrderCreated(order.getStatus(), order.getTotalAmount());
 
         return OrderOutput.from(order);
     }
@@ -72,5 +80,6 @@ public class OrderUseCase implements ForCreatingOrder, ForGettingOrder, ForUpdat
         }
 
         orderRepositoryPort.save(order);
+        orderMetricsPort.recordPaymentStatusUpdated(order.getStatus());
     }
 }

@@ -17,7 +17,7 @@ import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE)
+@Order(Ordered.HIGHEST_PRECEDENCE + 10)
 public class JwtAuthenticationWebFilter implements WebFilter {
     private static final String BEARER_PREFIX = "Bearer ";
     private static final String TOKEN_ISSUER = "restaurant-api";
@@ -58,7 +58,7 @@ public class JwtAuthenticationWebFilter implements WebFilter {
         return HttpMethod.OPTIONS.equals(method)
                 || path.startsWith("/api/v1/auth/")
                 || (HttpMethod.POST.equals(method) && "/api/v1/users".equals(path))
-                || path.startsWith("/actuator/health");
+                || path.startsWith("/actuator/");
     }
 
     private String recoverToken(ServerWebExchange exchange) {

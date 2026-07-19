@@ -84,8 +84,60 @@ Important local URLs:
 - Order health: `http://localhost:8081/actuator/health`.
 - Payment health: `http://localhost:8082/actuator/health`.
 - Kafka host bootstrap server: `localhost:29092`.
+- Prometheus: `http://localhost:9091`.
+- Grafana: `http://localhost:3000` com usuario `admin` e senha `admin`.
+- Grafana dashboards: pasta `Microservices`, dashboards `Microservices - Business Overview` e `Microservices - Technical Overview`.
 
 Full maintenance documentation for future developers lives in `docs/maintenance-guide.md`.
+
+## Observability Commands
+
+Actuator Prometheus endpoints:
+
+```powershell
+Invoke-WebRequest http://localhost:8761/actuator/prometheus
+Invoke-WebRequest http://localhost:9090/actuator/prometheus
+Invoke-WebRequest http://localhost:8080/actuator/prometheus
+Invoke-WebRequest http://localhost:8081/actuator/prometheus
+Invoke-WebRequest http://localhost:8082/actuator/prometheus
+```
+
+Correlation ID smoke check:
+
+```powershell
+$response = Invoke-WebRequest -Uri "http://localhost:9090/actuator/health" -Headers @{ "X-Correlation-Id" = "dev-check-123" }
+$response.Headers["X-Correlation-Id"]
+```
+
+Prometheus readiness:
+
+```powershell
+Invoke-WebRequest http://localhost:9091/-/ready
+```
+
+Business metrics smoke checks:
+
+```powershell
+Invoke-WebRequest http://localhost:8081/actuator/prometheus | Select-String "business_orders"
+Invoke-WebRequest http://localhost:8082/actuator/prometheus | Select-String "business_payments"
+```
+
+## Database Migrations
+
+Services that own PostgreSQL schemas use Flyway:
+
+- `user/src/main/resources/db/migration`
+- `order/src/main/resources/db/migration`
+- `payment/src/main/resources/db/migration`
+
+Hibernate is configured with `ddl-auto: validate` in these services. Do not use Hibernate auto-update for schema evolution. When an entity change requires a database change, create the next Flyway migration, for example `V2__add_order_column.sql`, and keep the SQL compatible with PostgreSQL.
+
+`spring.flyway.baseline-on-migrate=true` is enabled so existing local Docker volumes created before Flyway can be baselined safely. For a clean verification of migrations from zero, recreate volumes:
+
+```powershell
+docker compose down -v
+docker compose up --build
+```
 
 ## Test Notes
 
@@ -95,6 +147,7 @@ Full maintenance documentation for future developers lives in `docs/maintenance-
 - Order tests should verify order creation stores a payment request outbox event, the outbox publisher sends it to Kafka, and payment result handling updates status.
 - Payment tests should verify approval, fallback failure, result outbox storage, and outbox publication to Kafka.
 - Outbox integration tests use Testcontainers with real PostgreSQL and Kafka containers; they require Docker to be running and can take longer than pure unit tests.
+- Outbox integration tests disable Flyway and use Hibernate `create-drop` because they validate application behavior against isolated Testcontainers schemas.
 - For controller/API changes in `user`, confirm the OpenAPI contract, generated interfaces, mapper behavior, and security annotations remain aligned.
 
 ## Final Checklist for Codex
@@ -105,6 +158,8 @@ Before finishing a code change:
 - Run the narrowest relevant `mvn test` command.
 - For route/security changes, verify public and protected behavior.
 - For API contract changes, update OpenAPI, implementation, and tests together.
+- For persistence changes, add or update Flyway migrations and keep `ddl-auto: validate`.
 - For Kafka/outbox changes, verify both the database write and the asynchronous publication path.
 - For Docker or environment changes, mention whether `docker compose up --build` was run.
 - Report any warnings that are expected, such as Eureka connection warnings during isolated gateway tests.
+- For observability changes, verify `/actuator/prometheus`, Prometheus readiness, Grafana dashboards provisioning, business metric names, and `X-Correlation-Id` response propagation when Docker is available.
